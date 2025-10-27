@@ -117,20 +117,17 @@ final class OpenAICompatibleProvider: AIProvider
         {
             let (data, response) = try await URLSession.shared.data(for: request)
             
-            // Debug: Print raw response
-            print("=== OLLAMA RESPONSE DEBUG ===")
-            print("Response URL: \(request.url?.absoluteString ?? "unknown")")
+            #if DEBUG
+            DebugLogger.shared.debug("AI Request to: \(request.url?.absoluteString ?? "unknown")", source: "AIProvider")
             if let http = response as? HTTPURLResponse {
-                print("HTTP Status: \(http.statusCode)")
+                DebugLogger.shared.debug("HTTP Status: \(http.statusCode)", source: "AIProvider")
             }
-            if let responseText = String(data: data, encoding: .utf8) {
-                print("Raw Response: \(responseText)")
-            }
-            print("============================")
+            #endif
             
             if let http = response as? HTTPURLResponse, http.statusCode >= 400
             {
                 let errText = String(data: data, encoding: .utf8) ?? "Unknown error"
+                DebugLogger.shared.error("AI API error HTTP \(http.statusCode): \(errText)", source: "AIProvider")
                 return "Error: HTTP \(http.statusCode): \(errText)"
             }
             let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
@@ -138,12 +135,12 @@ final class OpenAICompatibleProvider: AIProvider
         }
         catch
         {
-            print("=== OLLAMA DECODE ERROR ===")
-            print("Error: \(error)")
+            DebugLogger.shared.error("AI API request failed: \(error.localizedDescription)", source: "AIProvider")
+            #if DEBUG
             if let decodingError = error as? DecodingError {
-                print("Decoding Error Details: \(decodingError)")
+                DebugLogger.shared.debug("Decoding error details: \(decodingError)", source: "AIProvider")
             }
-            print("==========================")
+            #endif
             return "Error: \(error.localizedDescription)"
         }
     }

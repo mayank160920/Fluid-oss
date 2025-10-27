@@ -9,6 +9,10 @@ final class MenuBarManager: ObservableObject {
     private var menu: NSMenu?
     private var isSetup: Bool = false
     
+    // Cached menu items to avoid rebuilding entire menu
+    private var statusMenuItem: NSMenuItem?
+    private var aiMenuItem: NSMenuItem?
+    
     // References to app state
     private weak var asrService: ASRService?
     private var cancellables = Set<AnyCancellable>()
@@ -211,38 +215,22 @@ final class MenuBarManager: ObservableObject {
         return image
     }
     
-    private func updateMenu() {
+    private func buildMenuStructure() {
         guard let menu = menu else { return }
         
         menu.removeAllItems()
         
-        // Status indicator
-        let statusTitle = isRecording ? "Recording..." : "Ready to Record"
-        let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
-        statusItem.isEnabled = false
-        menu.addItem(statusItem)
+        // Status indicator with hotkey info
+        statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        statusMenuItem?.isEnabled = false
+        menu.addItem(statusMenuItem!)
         
         menu.addItem(.separator())
         
-        // Start/Stop Recording
-        let recordingAction = isRecording ? "Stop Recording" : "Start Recording"
-        let recordingItem = NSMenuItem(title: recordingAction, action: #selector(toggleRecording), keyEquivalent: "")
-        recordingItem.target = self
-        
-        // Show hotkey if available
-        let hotkeyShortcut = SettingsStore.shared.hotkeyShortcut
-        recordingItem.keyEquivalent = "" // We'll show it in the title instead
-        if !hotkeyShortcut.displayString.isEmpty {
-            recordingItem.title = "\(recordingAction) (\(hotkeyShortcut.displayString))"
-        }
-        
-        menu.addItem(recordingItem)
-        
         // AI Processing Toggle
-        let aiTitle = aiProcessingEnabled ? "Disable AI Processing" : "Enable AI Processing"
-        let aiItem = NSMenuItem(title: aiTitle, action: #selector(toggleAIProcessing), keyEquivalent: "")
-        aiItem.target = self
-        menu.addItem(aiItem)
+        aiMenuItem = NSMenuItem(title: "", action: #selector(toggleAIProcessing), keyEquivalent: "")
+        aiMenuItem?.target = self
+        menu.addItem(aiMenuItem!)
         
         menu.addItem(.separator())
         
@@ -262,18 +250,31 @@ final class MenuBarManager: ObservableObject {
         let quitItem = NSMenuItem(title: "Quit FluidVoice", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quitItem.target = NSApp
         menu.addItem(quitItem)
+        
+        // Now update the text content
+        updateMenuItemsText()
     }
     
-    @objc private func toggleRecording() {
-        guard let asrService = asrService else { return }
-        
-        if isRecording {
-            Task {
-                _ = await asrService.stop()
-            }
+    private func updateMenu() {
+        // If menu structure hasn't been built yet, build it
+        if statusMenuItem == nil {
+            buildMenuStructure()
         } else {
-            asrService.start()
+            // Just update the text of existing items
+            updateMenuItemsText()
         }
+    }
+    
+    private func updateMenuItemsText() {
+        // Update status text with hotkey info
+        let hotkeyShortcut = SettingsStore.shared.hotkeyShortcut
+        let hotkeyInfo = hotkeyShortcut.displayString.isEmpty ? "" : " (\(hotkeyShortcut.displayString))"
+        let statusTitle = isRecording ? "Recording...\(hotkeyInfo)" : "Ready to Record\(hotkeyInfo)"
+        statusMenuItem?.title = statusTitle
+        
+        // Update AI toggle text
+        let aiTitle = aiProcessingEnabled ? "Disable AI Processing" : "Enable AI Processing"
+        aiMenuItem?.title = aiTitle
     }
     
     @objc private func toggleAIProcessing() {

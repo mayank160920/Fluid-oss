@@ -70,8 +70,8 @@ final class ASRService: ObservableObject
     private var isRecordingWholeSession: Bool = false
     private var recordedPCM: [Float] = []
 
-    // Streaming transcription properties (timer-based, no VAD)
-    private var streamingTimer: Timer?
+    // Streaming transcription state (no VAD)
+    private var streamingTask: Task<Void, Never>?
     private var lastProcessedSampleCount: Int = 0
     private let chunkDurationSeconds: Double = 2.0  // Safer interval to prevent ANE/CoreML conflicts
     private var isProcessingChunk: Bool = false
@@ -684,24 +684,37 @@ final class ASRService: ObservableObject
     // MARK: - Timer-based Streaming Transcription (No VAD)
     
     private func startStreamingTranscription() {
-        stopStreamingTimer()
+        streamingTask?.cancel()
         guard isAsrReady else { return }
-        
-        DebugLogger.shared.debug("Starting streaming transcription timer (every \(chunkDurationSeconds)s)", source: "ASRService")
-        
-        Task { @MainActor in
-            self.streamingTimer = Timer.scheduledTimer(withTimeInterval: self.chunkDurationSeconds, repeats: true) { [weak self] _ in
-                guard let self = self else { return }
-                Task { @MainActor in
-                    await self.processStreamingChunk()
-                }
-            }
+
+        DebugLogger.shared.debug("Starting streaming transcription task (interval: \(chunkDurationSeconds)s)", source: "ASRService")
+
+        streamingTask = Task { [weak self] in
+            await self?.runStreamingLoop()
         }
     }
-    
+
     private func stopStreamingTimer() {
-        streamingTimer?.invalidate()
-        streamingTimer = nil
+        streamingTask?.cancel()
+        streamingTask = nil
+    }
+
+    @MainActor
+    private func runStreamingLoop() async {
+        while !Task.isCancelled {
+            await processStreamingChunk()
+
+            if Task.isCancelled || isRunning == false {
+                break
+            }
+
+            do {
+                try await Task.sleep(nanoseconds: UInt64(chunkDurationSeconds * 1_000_000_000))
+            } catch {
+                DebugLogger.shared.debug("Streaming transcription task cancelled", source: "ASRService")
+                break
+            }
+        }
     }
     
     @MainActor

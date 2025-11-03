@@ -18,10 +18,10 @@ struct RecordingView: View {
     
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 24) {
+            VStack(spacing: 14) {
                 // Hero Header Card
                 ThemedCard(style: .standard) {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 12) {
                         HStack {
                             Image(systemName: "waveform.circle.fill")
                                 .font(.system(size: 32))
@@ -40,7 +40,7 @@ struct RecordingView: View {
                         }
 
                         // Status and Recording Control
-                        VStack(spacing: 12) {
+                        VStack(spacing: 10) {
                             // Status indicator
                             HStack {
                                 Circle()
@@ -76,11 +76,11 @@ struct RecordingView: View {
                             .disabled(!asr.isAsrReady && !asr.isRunning)
                         }
                     }
-                    .padding(24)
+                    .padding(14)
                 }
                 .modifier(CardAppearAnimation(delay: 0.1, appear: $appear))
             }
-            .padding(24)
+            .padding(14)
         }
     }
 }

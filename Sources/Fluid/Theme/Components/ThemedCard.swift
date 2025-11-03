@@ -32,7 +32,7 @@ struct ThemedCard<Content: View>: View {
         let shape = RoundedRectangle(cornerRadius: configuration.cornerRadius, style: .continuous)
 
         content
-            .padding(padding ?? theme.metrics.spacing.lg)
+            .padding(padding ?? 14)
             .background(configuration.material, in: shape)
             .background(
                 shape

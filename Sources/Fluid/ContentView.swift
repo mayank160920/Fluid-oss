@@ -124,6 +124,8 @@ struct ContentView: View {
     @State private var showRestartPrompt: Bool = false
     @State private var didOpenAccessibilityPane: Bool = false
     private let accessibilityRestartFlagKey = "FluidVoice_AccessibilityRestartPending"
+    private let hasAutoRestartedForAccessibilityKey = "FluidVoice_HasAutoRestartedForAccessibility"
+    @State private var accessibilityPollingTask: Task<Void, Never>?
     
     // MARK: - Voice Recognition Model Management
     // Models scoped by provider (name -> [models])
@@ -190,11 +192,19 @@ struct ContentView: View {
             // Ensure no restart UI shows if we already have trust
             if accessibilityEnabled { showRestartPrompt = false }
             
+            // Reset auto-restart flag if permission was revoked (allows re-triggering if user re-grants)
+            if !accessibilityEnabled {
+                UserDefaults.standard.set(false, forKey: hasAutoRestartedForAccessibilityKey)
+            }
+            
             // Initialize menu bar after app is ready (prevents window server crash)
             menuBarManager.initializeMenuBar()
             
             // Configure menu bar manager with ASR service
             menuBarManager.configure(asrService: asr)
+            
+            // Start polling for accessibility permission if not granted
+            startAccessibilityPolling()
             
             // Initialize hotkey manager with improved timing and validation
             initializeHotkeyManagerIfNeeded()
@@ -446,6 +456,10 @@ struct ContentView: View {
         .onDisappear {
             asr.stopWithoutTranscription()
             // Note: Overlay lifecycle is now managed by MenuBarManager
+            
+            // Stop accessibility polling
+            accessibilityPollingTask?.cancel()
+            accessibilityPollingTask = nil
         }
         .onChange(of: hotkeyShortcut) { newValue in
             DebugLogger.shared.debug("Hotkey shortcut changed to \(newValue.displayString)", source: "ContentView")
@@ -709,7 +723,7 @@ struct ContentView: View {
     // MARK: - AI Settings Tab
     private var aiSettingsView: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 // Voice to Text Model Card
                 ThemedCard(hoverEffect: false) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -830,12 +844,12 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                         }
                     }
-                    .padding(20)
+                    .padding(14)
                 }
                 
                 aiConfigurationCard
             }
-            .padding(16)
+            .padding(14)
         }
         .onAppear {
             // Ensure the toggle reflects persisted value when navigating between tabs
@@ -844,10 +858,10 @@ struct ContentView: View {
     }
     
     private var aiConfigurationCard: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             // API Configuration Section
             ThemedCard(style: .prominent, hoverEffect: false) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image(systemName: "key.fill")
                             .font(.title3)
@@ -868,7 +882,7 @@ struct ContentView: View {
                     }
                     
                     Divider()
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 3)
                     
                     // AI Enhancement Toggle - Aligned with Grid below
                     HStack(alignment: .top, spacing: 16) {
@@ -920,7 +934,7 @@ struct ContentView: View {
 
                     // Help Section
                     if showHelp {
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 Image(systemName: "lightbulb.fill")
                                     .foregroundStyle(.yellow)
@@ -991,7 +1005,7 @@ struct ContentView: View {
                                 }
                             }
                         }
-                        .padding(16)
+                        .padding(14)
                         .background(theme.palette.accent.opacity(0.08))
                         .cornerRadius(12)
                         .overlay(
@@ -1003,9 +1017,9 @@ struct ContentView: View {
                     }
                     
                     Divider()
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 3)
 
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
                         // Compatibility note
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.seal.fill")
@@ -1255,40 +1269,22 @@ struct ContentView: View {
                                 .buttonStyle(CompactButtonStyle())
                                 .buttonHoverEffect()
                             }
-                            
-                            if showingAddModel {
+                        }
+                        
+                        // Add model input (appears below on new line when in add mode)
+                        if showingAddModel {
+                            HStack(spacing: 8) {
                                 TextField("Enter model name", text: $newModelName)
                                     .textFieldStyle(.roundedBorder)
-                                    .frame(width: 200)
+                                    .onSubmit {
+                                        // Submit on Enter key
+                                        if !newModelName.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
+                                            addNewModel()
+                                        }
+                                    }
                                 
                                 Button("Add") {
-                                    if !newModelName.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
-                                        let modelName = newModelName.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                                        let key = providerKey(for: selectedProviderID)
-                                        var list = availableModelsByProvider[key] ?? availableModels
-                                        if !list.contains(modelName) { list.append(modelName) }
-                                        availableModelsByProvider[key] = list
-                                        SettingsStore.shared.availableModelsByProvider = availableModelsByProvider
-
-                                        if let providerIndex = savedProviders.firstIndex(where: { $0.id == selectedProviderID }) {
-                                            let updatedProvider = SettingsStore.SavedProvider(
-                                                id: savedProviders[providerIndex].id,
-                                                name: savedProviders[providerIndex].name,
-                                                baseURL: savedProviders[providerIndex].baseURL,
-                                                apiKey: savedProviders[providerIndex].apiKey,
-                                                models: list
-                                            )
-                                            savedProviders[providerIndex] = updatedProvider
-                                            saveSavedProviders()
-                                        }
-
-                                        availableModels = list
-                                        selectedModel = modelName
-                                        selectedModelByProvider[key] = modelName
-                                        SettingsStore.shared.selectedModelByProvider = selectedModelByProvider
-                                        showingAddModel = false
-                                        newModelName = ""
-                                    }
+                                    addNewModel()
                                 }
                                 .buttonStyle(CompactButtonStyle())
                                 .buttonHoverEffect()
@@ -1301,6 +1297,7 @@ struct ContentView: View {
                                 .buttonStyle(CompactButtonStyle())
                                 .buttonHoverEffect()
                             }
+                            .padding(.leading, 122) // Align with model picker
                         }
 
                         
@@ -1331,7 +1328,7 @@ struct ContentView: View {
                         // API Key Editor Sheet
                         Color.clear.frame(height: 0)
                             .sheet(isPresented: $showAPIKeyEditor) {
-                            VStack(spacing: 16) {
+                            VStack(spacing: 14) {
                                 Text("Enter \(currentProvider.capitalized) API Key")
                                     .font(.headline)
 
@@ -1514,7 +1511,7 @@ struct ContentView: View {
                     .padding(.horizontal, 4)
 
                 }
-                .padding(16)
+                .padding(14)
             }
             .modifier(CardAppearAnimation(delay: 0.1, appear: $appear))
             
@@ -1621,7 +1618,7 @@ struct ContentView: View {
                         .transition(.opacity)
                     }
                 }
-                .padding(16)
+                .padding(14)
             }
             .modifier(CardAppearAnimation(delay: 0.2, appear: $appear))
         }
@@ -1635,7 +1632,7 @@ struct ContentView: View {
 
     // MARK: - Stats View (Coming Soon)
     private var statsView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 14) {
             Spacer()
             
             Image(systemName: "chart.bar.fill")
@@ -1690,7 +1687,7 @@ struct ContentView: View {
 
                 // Friendly Message & GitHub CTA
                 ThemedCard(style: .prominent, hoverEffect: false) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 12) {
                             Image(systemName: "heart.fill")
                                 .font(.system(size: 28))
@@ -2270,6 +2267,16 @@ struct ContentView: View {
         recordingAppInfo = info
         DebugLogger.shared.debug("Captured recording app context: app=\(info.name), bundleId=\(info.bundleId), title=\(info.windowTitle)", source: "ContentView")
         asr.start()
+        
+        // Pre-load model in background while recording (avoids 10s freeze on stop)
+        Task {
+            do {
+                try await asr.ensureAsrReady()
+                DebugLogger.shared.debug("Model pre-loaded during recording", source: "ContentView")
+            } catch {
+                DebugLogger.shared.error("Failed to pre-load model: \(error)", source: "ContentView")
+            }
+        }
     }
     
     // MARK: - ASR Model Management
@@ -2302,6 +2309,52 @@ struct ContentView: View {
     private func preloadASRModel() async {
         // DEPRECATED: No longer auto-loads on startup - models downloaded manually
         DebugLogger.shared.debug("Skipping auto-preload - models downloaded manually via UI", source: "ContentView")
+    }
+    
+    // MARK: - Model Management
+    private func addNewModel() {
+        guard !newModelName.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else { return }
+        
+        let modelName = newModelName.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        let key = providerKey(for: selectedProviderID)
+        
+        // Get current list or start fresh if empty
+        var list = availableModelsByProvider[key] ?? availableModels
+        if list.isEmpty {
+            list = []
+        }
+        
+        // Add the new model if not already in list
+        if !list.contains(modelName) {
+            list.append(modelName)
+        }
+        
+        // Update state
+        availableModelsByProvider[key] = list
+        SettingsStore.shared.availableModelsByProvider = availableModelsByProvider
+        
+        // Update saved provider if exists
+        if let providerIndex = savedProviders.firstIndex(where: { $0.id == selectedProviderID }) {
+            let updatedProvider = SettingsStore.SavedProvider(
+                id: savedProviders[providerIndex].id,
+                name: savedProviders[providerIndex].name,
+                baseURL: savedProviders[providerIndex].baseURL,
+                apiKey: savedProviders[providerIndex].apiKey,
+                models: list
+            )
+            savedProviders[providerIndex] = updatedProvider
+            saveSavedProviders()
+        }
+        
+        // Update UI state
+        availableModels = list
+        selectedModel = modelName
+        selectedModelByProvider[key] = modelName
+        SettingsStore.shared.selectedModelByProvider = selectedModelByProvider
+        
+        // Close the add model UI
+        showingAddModel = false
+        newModelName = ""
     }
     
     // MARK: - API Connection Testing
@@ -2558,6 +2611,39 @@ struct ContentView: View {
         try? process.run()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             NSApp.terminate(nil)
+        }
+    }
+    
+    private func startAccessibilityPolling() {
+        // Don't poll if already enabled or if we've already auto-restarted once
+        guard !accessibilityEnabled else { return }
+        guard !UserDefaults.standard.bool(forKey: hasAutoRestartedForAccessibilityKey) else { return }
+        
+        // Cancel any existing polling task
+        accessibilityPollingTask?.cancel()
+        
+        // Start background polling
+        accessibilityPollingTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // Poll every 2 seconds
+                
+                // Check if permission was granted
+                let nowTrusted = AXIsProcessTrusted()
+                if nowTrusted && !accessibilityEnabled {
+                    await MainActor.run {
+                        DebugLogger.shared.info("Accessibility permission granted! Auto-restarting app...", source: "ContentView")
+                        
+                        // Mark that we've auto-restarted to prevent loops
+                        UserDefaults.standard.set(true, forKey: hasAutoRestartedForAccessibilityKey)
+                        
+                        // Give user brief moment to see any UI feedback
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self.restartApp()
+                        }
+                    }
+                    break // Stop polling after triggering restart
+                }
+            }
         }
     }
 

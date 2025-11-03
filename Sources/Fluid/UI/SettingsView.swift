@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AVFoundation
+import PromiseKit
 
 struct SettingsView: View {
     @ObservedObject var asr: ASRService
@@ -37,10 +38,10 @@ struct SettingsView: View {
     
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 24) {
+            VStack(spacing: 14) {
                 // App Settings Card
                 ThemedCard(style: .standard) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "power")
                                 .font(.title2)
@@ -50,7 +51,7 @@ struct SettingsView: View {
                                 .fontWeight(.semibold)
                         }
 
-                        VStack(spacing: 20) {
+                        VStack(spacing: 14) {
                             // Launch at startup
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(alignment: .top, spacing: 16) {
@@ -141,23 +142,51 @@ struct SettingsView: View {
                                 }
                             }
                             
-                            // What's New Button
-                            Button("What's New") {
-                                DispatchQueue.main.async {
+                            // Update Buttons - Left/Right aligned
+                            HStack(spacing: 12) {
+                                Button("Check for Updates") {
+                                    // Direct update check - same as menu bar
+                                    Task { @MainActor in
+                                        do {
+                                            try await SimpleUpdater.shared.checkAndUpdate(owner: "altic-dev", repo: "Fluid-oss")
+                                            let ok = NSAlert()
+                                            ok.messageText = "Update Found!"
+                                            ok.informativeText = "A new version is available and will be installed now."
+                                            ok.alertStyle = .informational
+                                            ok.addButton(withTitle: "OK")
+                                            ok.runModal()
+                                        } catch {
+                                            let msg = NSAlert()
+                                            if let pmkError = error as? PMKError, pmkError.isCancelled {
+                                                msg.messageText = "You're Up To Date"
+                                                msg.informativeText = "You're already running the latest version of FluidVoice."
+                                            } else {
+                                                msg.messageText = "Update Check Failed"
+                                                msg.informativeText = "Unable to check for updates. Please try again later.\n\nError: \(error.localizedDescription)"
+                                            }
+                                            msg.alertStyle = .informational
+                                            msg.runModal()
+                                        }
+                                    }
+                                }
+                                .buttonStyle(PremiumButtonStyle(height: 40))
+                                .buttonHoverEffect()
+                                
+                                Button("What's New") {
                                     showWhatsNewSheet = true
                                 }
+                                .buttonStyle(PremiumButtonStyle(height: 40))
+                                .buttonHoverEffect()
                             }
-                            .buttonStyle(PremiumButtonStyle(height: 40))
-                            .buttonHoverEffect()
                             .padding(.top, 4)
                         }
                     }
-                    .padding(24)
+                    .padding(14)
                 }
                 
                 // Microphone Permission Card
                 ThemedCard(style: .standard) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "mic.fill")
                                 .font(.title2)
@@ -167,7 +196,7 @@ struct SettingsView: View {
                                 .fontWeight(.semibold)
                         }
                         
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 10) {
                             HStack(spacing: 12) {
                                 // Status indicator
                                 Circle()
@@ -295,12 +324,12 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .padding(24)
+                    .padding(14)
                 }
                 
                 // Global Hotkey Card
                 ThemedCard(style: .standard) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "keyboard")
                                 .font(.title2)
@@ -312,7 +341,7 @@ struct SettingsView: View {
                         
                         if accessibilityEnabled {
                             // Hotkey is enabled
-                            VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 12) {
                                 // Current Hotkey Display
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Current Hotkey")
@@ -425,7 +454,7 @@ struct SettingsView: View {
                                 )
                                 
                                 // Press and hold toggle
-                                VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 10) {
                                     Toggle("Press and Hold Mode", isOn: $pressAndHoldModeEnabled)
                                         .toggleStyle(GlassToggleStyle())
                                     Text("When enabled, the shortcut only records while you hold it down, giving you quick push-to-talk style control.")
@@ -448,7 +477,7 @@ struct SettingsView: View {
                                 }
                                 
                                 // Streaming preview toggle
-                                VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 10) {
                                     Toggle("Show Live Preview", isOn: $enableStreamingPreview)
                                         .toggleStyle(GlassToggleStyle())
                                     Text("Display transcription text in real-time in the overlay as you speak. When disabled, only the animation is shown.")
@@ -474,7 +503,7 @@ struct SettingsView: View {
                                 }
                                 
                                 // Copy to clipboard toggle
-                                VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 10) {
                                     Toggle("Copy to Clipboard", isOn: $copyToClipboard)
                                         .toggleStyle(GlassToggleStyle())
                                     Text("Automatically copy transcribed text to clipboard as a backup, useful when no text field is selected.")
@@ -497,7 +526,7 @@ struct SettingsView: View {
                             }
                         } else {
                             // Hotkey disabled - accessibility not enabled
-                            VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 12) {
                                     // Status indicator
                                     Circle()
@@ -602,12 +631,12 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .padding(24)
+                    .padding(14)
                 }
                 
                 // Audio Devices Card
                 ThemedCard(style: .standard) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "speaker.wave.2.fill")
                                 .font(.title2)
@@ -617,7 +646,7 @@ struct SettingsView: View {
                                 .fontWeight(.semibold)
                         }
                         
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 Text("Input Device")
                                     .fontWeight(.medium)
@@ -674,12 +703,12 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .padding(24)
+                    .padding(14)
                 }
                 
                 // Visualization Sensitivity Card
                 ThemedCard(style: .standard) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "waveform")
                                 .font(.title2)
@@ -689,7 +718,7 @@ struct SettingsView: View {
                                 .fontWeight(.semibold)
                         }
                         
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Visualization Sensitivity")
@@ -731,12 +760,12 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .padding(24)
+                    .padding(14)
                 }
                 
                 // Debug Settings Card
                 ThemedCard(style: .standard) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "ladybug.fill")
                                 .font(.title2)
@@ -746,7 +775,7 @@ struct SettingsView: View {
                                 .fontWeight(.semibold)
                         }
 
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 10) {
                             Button {
                                 let url = FileLogger.shared.currentLogFileURL()
                                 if FileManager.default.fileExists(atPath: url.path) {
@@ -767,10 +796,10 @@ struct SettingsView: View {
                                 .padding(.leading, 4)
                         }
                     }
-                    .padding(24)
+                    .padding(14)
                 }
             }
-            .padding(24)
+            .padding(14)
         }
         .onAppear {
             refreshDevices()

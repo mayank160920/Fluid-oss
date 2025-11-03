@@ -55,6 +55,20 @@ struct WelcomeView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             SetupStepView(
                                 step: 1,
+                                title: asr.isAsrReady ? "Voice Model Ready" : "Download Voice Model",
+                                description: asr.isAsrReady
+                                    ? "Speech recognition model is loaded and ready"
+                                    : "Download the AI model for offline voice transcription (~500MB)",
+                                status: asr.isAsrReady ? .completed : .pending,
+                                action: {
+                                    selectedSidebarItem = .aiSettings
+                                },
+                                actionButtonTitle: "Go to AI Settings",
+                                showActionButton: !asr.isAsrReady
+                            )
+                            
+                            SetupStepView(
+                                step: 2,
                                 title: asr.micStatus == .authorized ? "Microphone Permission Granted" : "Grant Microphone Permission",
                                 description: asr.micStatus == .authorized 
                                     ? "FluidVoice has access to your microphone" 
@@ -72,7 +86,7 @@ struct WelcomeView: View {
                             )
 
                             SetupStepView(
-                                step: 2,
+                                step: 3,
                                 title: accessibilityEnabled ? "Accessibility Enabled" : "Enable Accessibility",
                                 description: accessibilityEnabled 
                                     ? "Accessibility permission granted for typing into apps" 
@@ -86,7 +100,7 @@ struct WelcomeView: View {
                             )
 
                             SetupStepView(
-                                step: 3,
+                                step: 4,
                                 title: {
                                     let hasApiKey = providerAPIKeys[currentProvider]?.isEmpty == false
                                     let isLocal = isLocalEndpoint(openAIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -116,7 +130,7 @@ struct WelcomeView: View {
                             )
 
                             SetupStepView(
-                                step: 4,
+                                step: 5,
                                 title: playgroundUsed ? "Setup Tested Successfully" : "Test Your Setup",
                                 description: playgroundUsed 
                                     ? "You've successfully tested voice transcription" 
@@ -265,17 +279,12 @@ struct WelcomeView: View {
                                     if asr.isRunning {
                                         Task {
                                             await stopAndProcessTranscription()
-                                            // Mark playground as used when transcription completes successfully
-                                            await MainActor.run {
-                                                // Only mark as used if we actually got some text
-                                                if !asr.finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                                    playgroundUsed = true
-                                                    SettingsStore.shared.playgroundUsed = true
-                                                }
-                                            }
                                         }
                                     } else {
                                         startRecording()
+                                        // Mark playground as used immediately when user clicks to test
+                                        playgroundUsed = true
+                                        SettingsStore.shared.playgroundUsed = true
                                     }
                                 }) {
                                     HStack {

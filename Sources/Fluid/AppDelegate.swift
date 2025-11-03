@@ -46,7 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("🔍 DEBUG: Manual update check started - Current version: \(currentVersion)")
         print("🔍 DEBUG: Repository: altic-dev/Fluid-oss")
         
-        Task {
+        Task { @MainActor in
             do {
                 // Use our tolerant updater to handle v-prefixed tags and 2-part versions
                 try await SimpleUpdater.shared.checkAndUpdate(owner: "altic-dev", repo: "Fluid-oss")
@@ -132,7 +132,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    @MainActor
     private func showUpdateAlert(title: String, message: String) {
+        print("🔔 Showing alert: \(title)")
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message

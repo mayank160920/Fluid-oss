@@ -95,7 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if result.hasUpdate {
                     DebugLogger.shared.info("✅ Update available: \(result.latestVersion)", source: "AppDelegate")
                     // Show update notification on main thread
-                    await showUpdateNotification(version: result.latestVersion)
+                    showUpdateNotification(version: result.latestVersion)
                 } else {
                     DebugLogger.shared.info("✅ App is up to date", source: "AppDelegate")
                 }

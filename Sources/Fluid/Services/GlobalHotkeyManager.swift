@@ -9,6 +9,7 @@ final class GlobalHotkeyManager: NSObject
     private var shortcut: HotkeyShortcut
     private var commandModeShortcut: HotkeyShortcut
     private var rewriteModeShortcut: HotkeyShortcut
+    private var startRecordingCallback: (() async -> Void)?
     private var stopAndProcessCallback: (() async -> Void)?
     private var commandModeCallback: (() async -> Void)?
     private var rewriteModeCallback: (() async -> Void)?
@@ -30,6 +31,7 @@ final class GlobalHotkeyManager: NSObject
         shortcut: HotkeyShortcut,
         commandModeShortcut: HotkeyShortcut,
         rewriteModeShortcut: HotkeyShortcut,
+        startRecordingCallback: (() async -> Void)? = nil,
         stopAndProcessCallback: (() async -> Void)? = nil,
         commandModeCallback: (() async -> Void)? = nil,
         rewriteModeCallback: (() async -> Void)? = nil
@@ -39,6 +41,7 @@ final class GlobalHotkeyManager: NSObject
         self.shortcut = shortcut
         self.commandModeShortcut = commandModeShortcut
         self.rewriteModeShortcut = rewriteModeShortcut
+        self.startRecordingCallback = startRecordingCallback
         self.stopAndProcessCallback = stopAndProcessCallback
         self.commandModeCallback = commandModeCallback
         self.rewriteModeCallback = rewriteModeCallback
@@ -470,7 +473,12 @@ final class GlobalHotkeyManager: NSObject
             }
             else
             {
-                self.asrService.start()
+                // Use callback if available, otherwise fallback to direct start
+                if let callback = self.startRecordingCallback {
+                    await callback()
+                } else {
+                    self.asrService.start()
+                }
             }
         }
     }
@@ -481,7 +489,12 @@ final class GlobalHotkeyManager: NSObject
             guard let self = self else { return }
             if !self.asrService.isRunning
             {
-                self.asrService.start()
+                // Use callback if available, otherwise fallback to direct start
+                if let callback = self.startRecordingCallback {
+                    await callback()
+                } else {
+                    self.asrService.start()
+                }
             }
         }
     }

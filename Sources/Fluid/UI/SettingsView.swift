@@ -518,10 +518,6 @@ struct SettingsView: View {
                                 )
                                 .onChange(of: enableStreamingPreview) { newValue in
                                     SettingsStore.shared.enableStreamingPreview = newValue
-                                    menuBarManager.updateOverlayPreviewSetting(newValue)
-                                    if !newValue {
-                                        menuBarManager.updateOverlayTranscription("")
-                                    }
                                 }
                                 
                                 // Copy to clipboard toggle

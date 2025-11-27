@@ -12,13 +12,6 @@ import Combine
 import CoreAudio
 import CoreGraphics
 
-// Visualization types moved to UI/Visualization
-
-// Removed inline default animations (now modular)
-
-// Import the talking animations from TalkingAnimations.swift
-// The TalkingAudioVisualizationView is now defined in TalkingAnimations.swift
-
 // MARK: - Sidebar Item Enum
 
 enum SidebarItem: Hashable {
@@ -31,44 +24,6 @@ enum SidebarItem: Hashable {
     case commandMode
     case rewriteMode
 }
-
-// MARK: - Listening Overlay View (using modular components)
-struct ListeningOverlayView: View
-{
-    var audioLevelPublisher: AnyPublisher<CGFloat, Never>?
-    
-    var body: some View
-    {
-        TalkingListeningOverlayView(
-            audioLevelPublisher: audioLevelPublisher ?? Empty().eraseToAnyPublisher()
-        )
-    }
-}
-
-// MARK: - Example of switching animation styles
-/*
-// To use a different animation, simply replace the ListeningOverlayView implementation:
-
-struct PulseListeningOverlayView: View {
-    let audioLevelPublisher: AnyPublisher<CGFloat, Never>
-    
-    var body: some View {
-        PulseAudioVisualizationView(
-            audioLevelPublisher: audioLevelPublisher ?? Empty().eraseToAnyPublisher(),
-            config: PulseAnimationConfig()
-        )
-    }
-}
-
-// Then update ContentView to use PulseListeningOverlayView instead of ListeningOverlayView
-// in the .onChange modifier where the overlay is shown.
-*/
-
-// ListeningOverlayController moved to Services/
-
-// HotkeyShortcut moved to Models/
-
-// GlobalHotkeyManager moved to Services/
 
 // MARK: - Minimal FluidAudio ASR Service (finalized text, macOS)
 
@@ -529,10 +484,6 @@ struct ContentView: View {
                 self.hotkeyManagerInitialized = self.hotkeyManager?.validateEventTapHealth() ?? false
                 DebugLogger.shared.debug("Hotkey manager initialized: \(self.hotkeyManagerInitialized)", source: "ContentView")
             }
-        }
-        .onChange(of: enableStreamingPreview) { enabled in
-            // Sync streaming preview setting to MenuBarManager's overlay
-            menuBarManager.updateOverlayPreviewSetting(enabled)
         }
     }
 
@@ -2304,14 +2255,16 @@ struct ContentView: View {
         let wasCommandMode = isRecordingForCommand
         if wasRewriteMode {
             isRecordingForRewrite = false
-            menuBarManager.setOverlayMode(.dictation) // Reset overlay mode
+            // Don't reset overlay mode here - let it stay colored until it hides
         }
         if wasCommandMode {
             isRecordingForCommand = false
-            menuBarManager.setOverlayMode(.dictation) // Reset overlay mode
+            // Don't reset overlay mode here - let it stay colored until it hides
         }
 
         // Stop the ASR service and wait for transcription to complete
+        // This will set isRunning = false, which triggers overlay hide
+        // The overlay will hide while still showing the correct mode color (no gray transition)
         let transcribedText = await asr.stop()
 
         guard transcribedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
@@ -2414,6 +2367,11 @@ struct ContentView: View {
 
     // Capture app context at start to avoid mismatches if the user switches apps mid-session
     private func startRecording() {
+        // Ensure normal dictation mode is set (command/rewrite modes set their own)
+        if !isRecordingForCommand && !isRecordingForRewrite {
+            menuBarManager.setOverlayMode(.dictation)
+        }
+        
         let info = getCurrentAppInfo()
         recordingAppInfo = info
         DebugLogger.shared.debug("Captured recording app context: app=\(info.name), bundleId=\(info.bundleId), title=\(info.windowTitle)", source: "ContentView")
@@ -2906,6 +2864,9 @@ struct ContentView: View {
             shortcut: hotkeyShortcut,
             commandModeShortcut: commandModeHotkeyShortcut,
             rewriteModeShortcut: rewriteModeHotkeyShortcut,
+            startRecordingCallback: {
+                self.startRecording()
+            },
             stopAndProcessCallback: {
                 await stopAndProcessTranscription()
             },

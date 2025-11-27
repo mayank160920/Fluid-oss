@@ -4,6 +4,7 @@ struct CommandModeView: View {
     @ObservedObject var service: CommandModeService
     @ObservedObject var asr: ASRService
     @ObservedObject var settings = SettingsStore.shared
+    @EnvironmentObject var menuBarManager: MenuBarManager
     var onClose: (() -> Void)?
     @State private var inputText: String = ""
     
@@ -65,6 +66,12 @@ struct CommandModeView: View {
         }
         .onAppear {
             updateAvailableModels()
+            // Set overlay mode to command when this view appears
+            menuBarManager.setOverlayMode(.command)
+        }
+        .onDisappear {
+            // Reset overlay mode to dictation when leaving
+            menuBarManager.setOverlayMode(.dictation)
         }
         .onChange(of: asr.finalText) { newText in
             if !newText.isEmpty {

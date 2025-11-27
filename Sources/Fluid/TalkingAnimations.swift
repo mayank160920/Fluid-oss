@@ -390,99 +390,6 @@ struct PremiumTalkingParticle: View {
     }
 }
 
-// MARK: - ECG-Style Listening Overlay
-struct TalkingListeningOverlayView: View {
-    let audioLevelPublisher: AnyPublisher<CGFloat, Never>
-    @StateObject private var appTracker = ActiveAppTracker()
-    
-    private var appDisplayName: String {
-        if let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, name.isEmpty == false {
-            return name
-        }
-        if let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String, name.isEmpty == false {
-            return name
-        }
-        return "Fluid"
-    }
-
-    // Optional brand wordmark image from asset catalog
-    private var brandWordmarkImage: NSImage? {
-        // Try a few common names so you can drop in any of these
-        return NSImage(named: "BrandWordmark")
-            ?? NSImage(named: "FluidWordmark")
-            ?? NSImage(named: "fluid_wordmark")
-    }
-    
-    var body: some View {
-        ZStack {
-            // NO BACKGROUND - Using unified container from ListeningOverlayController
-            
-            // Centered visualizer - absolutely positioned
-            TalkingAudioVisualizationView(audioLevelPublisher: audioLevelPublisher)
-            
-            // Brand label - absolutely positioned center-right (wordmark if available, else icon + name)
-            HStack {
-                Spacer()
-                HStack(spacing: 4) {
-                    if let wordmark = brandWordmarkImage {
-                        Image(nsImage: wordmark)
-                            .resizable()
-                            .interpolation(.high)
-                            .antialiased(true)
-                            .scaledToFit()
-                            .frame(height: 24)
-                            .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-                    } else {
-                        if let nsIcon = NSApp.applicationIconImage {
-                            Image(nsImage: nsIcon)
-                                .resizable()
-                                .interpolation(.high)
-                                .antialiased(true)
-                                .frame(width: 14, height: 14)
-                                .cornerRadius(3)
-                                .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-                        }
-                        Text(appDisplayName.uppercased())
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .kerning(0.5)
-                            .foregroundColor(.white.opacity(0.6))
-                            .shadow(color: .black.opacity(0.8), radius: 2, x: 1, y: 1)
-                            .shadow(color: .black.opacity(0.6), radius: 4, x: 2, y: 2)
-                            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 0)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color.black.opacity(0.4),
-                                    Color.black.opacity(0.6)
-                                ]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(
-                                    Color.white.opacity(0.1),
-                                    lineWidth: 0.5
-                                )
-                        )
-                )
-                .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
-                .padding(.trailing, 12)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onReceive(audioLevelPublisher) { _ in }
-    }
-}
-
 // MARK: - Individual Spokenly Bar
 struct SpokenlyBar: View {
     let height: CGFloat
@@ -497,21 +404,5 @@ struct SpokenlyBar: View {
             .frame(width: config.barWidth, height: height)
             .opacity(opacity)
             .shadow(color: Color.black.opacity(0.2), radius: 1, x: 0, y: 1)
-    }
-}
-
-struct EnhancedTalkingListeningOverlayView: View {
-    let audioLevelPublisher: AnyPublisher<CGFloat, Never>
-    
-    var body: some View {
-        ZStack {
-            EnhancedTalkingAudioVisualizationView(audioLevelPublisher: audioLevelPublisher)
-        }
-        .frame(width: 100, height: 32)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.black.opacity(0.08))
-                .blur(radius: 6)
-        )
     }
 }

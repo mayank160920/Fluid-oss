@@ -18,11 +18,17 @@ final class MenuBarManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     // Overlay management (persistent, independent of window lifecycle)
-    private var overlay: ListeningOverlayController?
     private var overlayVisible: Bool = false
     
     @Published var isRecording: Bool = false
     @Published var aiProcessingEnabled: Bool = false
+    
+    // Track current overlay mode for notch
+    private var currentOverlayMode: OverlayMode = .dictation
+    
+    // Track pending overlay operations to prevent spam
+    private var pendingShowOperation: DispatchWorkItem?
+    private var pendingHideOperation: DispatchWorkItem?
     
     init() {
         // Don't setup menu bar immediately - defer until app is ready
@@ -53,11 +59,6 @@ final class MenuBarManager: ObservableObject {
     func configure(asrService: ASRService) {
         self.asrService = asrService
         
-        // Initialize overlay controller (persists for app lifetime)
-        if overlay == nil {
-            overlay = ListeningOverlayController(asrService: asrService)
-        }
-        
         // Subscribe to recording state changes
         asrService.$isRunning
             .receive(on: DispatchQueue.main)
@@ -75,7 +76,8 @@ final class MenuBarManager: ObservableObject {
         asrService.$partialTranscription
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newText in
-                self?.overlay?.updateTranscriptionText(newText)
+                guard self != nil else { return }
+                NotchOverlayManager.shared.updateTranscriptionText(newText)
             }
             .store(in: &cancellables)
         
@@ -89,42 +91,53 @@ final class MenuBarManager: ObservableObject {
         
         let delay: DispatchTimeInterval = .milliseconds(150)
         if isRunning {
+            // Cancel any pending hide operation
+            pendingHideOperation?.cancel()
+            pendingHideOperation = nil
+            
             overlayVisible = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            
+            let showItem = DispatchWorkItem { [weak self] in
                 guard let self = self, self.overlayVisible else { return }
-                let hosting = NSHostingView(rootView: ListeningOverlayView(audioLevelPublisher: asrService.audioLevelPublisher))
-                hosting.wantsLayer = true
-                hosting.layer?.cornerRadius = 20
-                hosting.layer?.masksToBounds = true
-                let showPreview = SettingsStore.shared.enableStreamingPreview
-                self.overlay?.show(with: hosting, showPreview: showPreview)
+                
+                // Show notch overlay
+                NotchOverlayManager.shared.show(
+                    audioLevelPublisher: asrService.audioLevelPublisher,
+                    mode: self.currentOverlayMode
+                )
+                
+                self.pendingShowOperation = nil
             }
+            pendingShowOperation = showItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: showItem)
         } else {
+            // Cancel any pending show operation
+            pendingShowOperation?.cancel()
+            pendingShowOperation = nil
+            
             overlayVisible = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            
+            let hideItem = DispatchWorkItem { [weak self] in
                 guard let self = self, !self.overlayVisible else { return }
-                self.overlay?.hide()
-                // Clear transcription text when hiding overlay
-                self.overlay?.updateTranscriptionText("")
+                
+                // Hide notch overlay
+                NotchOverlayManager.shared.hide()
+                
+                self.pendingHideOperation = nil
             }
+            pendingHideOperation = hideItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: hideItem)
         }
     }
     
-    // MARK: - Public API for overlay management (for ContentView to sync)
+    // MARK: - Public API for overlay management
     func updateOverlayTranscription(_ text: String) {
-        overlay?.updateTranscriptionText(text)
-    }
-    
-    func updateOverlayPreviewSetting(_ enabled: Bool) {
-        overlay?.setPreviewEnabled(enabled)
+        NotchOverlayManager.shared.updateTranscriptionText(text)
     }
     
     func setOverlayMode(_ mode: OverlayMode) {
-        overlay?.setMode(mode)
-    }
-    
-    func showToast(_ message: String) {
-        overlay?.showToast(message)
+        currentOverlayMode = mode
+        NotchOverlayManager.shared.setMode(mode)
     }
     
     private func setupMenuBarSafely() {

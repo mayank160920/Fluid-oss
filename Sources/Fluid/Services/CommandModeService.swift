@@ -164,8 +164,9 @@ final class CommandModeService: ObservableObject {
     
     private func callLLM() async throws -> LLMResponse {
         let settings = SettingsStore.shared
-        let providerID = settings.commandModeLinkedToGlobal ? settings.selectedProviderID : settings.commandModeSelectedProviderID
-        let model = (settings.commandModeLinkedToGlobal ? settings.selectedModel : settings.commandModeSelectedModel) ?? "gpt-4o"
+        // Use Command Mode's independent provider/model settings
+        let providerID = settings.commandModeSelectedProviderID
+        let model = settings.commandModeSelectedModel ?? "gpt-4o"
         let apiKey = settings.providerAPIKeys[providerID] ?? ""
         
         let baseURL: String
@@ -298,3 +299,4 @@ final class CommandModeService: ObservableObject {
         )
     }
 }
+

@@ -506,11 +506,6 @@ struct ContentView: View {
                     .font(.system(size: 15, weight: .medium))
             }
             
-            NavigationLink(value: SidebarItem.preferences) {
-                Label("Preferences", systemImage: "gearshape.fill")
-                    .font(.system(size: 15, weight: .medium))
-            }
-            
             NavigationLink(value: SidebarItem.commandMode) {
                 Label("Command Mode", systemImage: "terminal.fill")
                     .font(.system(size: 15, weight: .medium))
@@ -528,6 +523,11 @@ struct ContentView: View {
 
             NavigationLink(value: SidebarItem.stats) {
                 Label("Stats", systemImage: "chart.bar.fill")
+                    .font(.system(size: 15, weight: .medium))
+            }
+            
+            NavigationLink(value: SidebarItem.preferences) {
+                Label("Preferences", systemImage: "gearshape.fill")
                     .font(.system(size: 15, weight: .medium))
             }
 
@@ -952,8 +952,9 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 4)
                     
-                    // API Key Warning
+                    // API Key Warning (not for Apple Intelligence - it doesn't need a key)
                     if enableAIProcessing && 
+                       selectedProviderID != "apple-intelligence" &&
                        !isLocalEndpoint(openAIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)) && 
                        (providerAPIKeys[currentProvider] ?? "").trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
                         HStack(spacing: 10) {
@@ -1065,16 +1066,28 @@ struct ContentView: View {
                         .padding(.vertical, 3)
 
                     VStack(alignment: .leading, spacing: 10) {
-                        // Compatibility note
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.caption2)
-                                .foregroundStyle(theme.palette.accent)
-                            Text("Supports any OpenAI compatible API endpoints")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        // Compatibility note (different for Apple Intelligence)
+                        if selectedProviderID == "apple-intelligence" {
+                            HStack(spacing: 6) {
+                                Image(systemName: "apple.logo")
+                                    .font(.caption2)
+                                    .foregroundStyle(theme.palette.accent)
+                                Text("Powered by on-device Apple Intelligence")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 4)
+                        } else {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(theme.palette.accent)
+                                Text("Supports any OpenAI compatible API endpoints")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 4)
                         }
-                        .padding(.horizontal, 4)
                         
                         Divider()
                         
@@ -1099,6 +1112,15 @@ struct ContentView: View {
                             Picker("", selection: $selectedProviderID) {
                                 Text("OpenAI").tag("openai")
                                 Text("Groq").tag("groq")
+                                
+                                // Apple Intelligence - show but disable if unavailable
+                                if AppleIntelligenceService.isAvailable {
+                                    Text("Apple Intelligence").tag("apple-intelligence")
+                                } else {
+                                    Text("Apple Intelligence (Unavailable)")
+                                        .foregroundColor(.secondary)
+                                        .tag("apple-intelligence-disabled")
+                                }
 
                                 if !savedProviders.isEmpty {
                                     Divider()
@@ -1111,6 +1133,12 @@ struct ContentView: View {
                             .labelsHidden()
                             .frame(width: 200)
                             .onChange(of: selectedProviderID) { newValue in
+                                // Prevent selecting disabled Apple Intelligence
+                                if newValue == "apple-intelligence-disabled" {
+                                    selectedProviderID = "openai"
+                                    return
+                                }
+                                
                                 switch newValue {
                                 case "openai":
                                     openAIBaseURL = "https://api.openai.com/v1"
@@ -1128,6 +1156,12 @@ struct ContentView: View {
                                     else { availableModels = defaultModels(for: key) }
                                     if let sel = selectedModelByProvider[key], availableModels.contains(sel) { selectedModel = sel }
                                     else { selectedModel = availableModels.first ?? selectedModel }
+                                case "apple-intelligence":
+                                    // Apple Intelligence - no base URL or models needed
+                                    openAIBaseURL = ""
+                                    updateCurrentProvider()
+                                    availableModels = ["System Model"]
+                                    selectedModel = "System Model"
                                 default:
                                     if let provider = savedProviders.first(where: { $0.id == newValue }) {
                                         openAIBaseURL = provider.baseURL
@@ -1171,7 +1205,7 @@ struct ContentView: View {
                             }
                             .buttonStyle(CompactButtonStyle())
                             .buttonHoverEffect()
-                            .disabled(selectedProviderID == "openai" || selectedProviderID == "groq")
+                            .disabled(selectedProviderID == "openai" || selectedProviderID == "groq" || selectedProviderID == "apple-intelligence")
                             
                             Button("+ Add Provider") {
                                 showingSaveProvider = true
@@ -1184,8 +1218,38 @@ struct ContentView: View {
                             .buttonHoverEffect()
                         }
                         
-                        // Base URL (for custom providers)
-                        if !["openai", "groq"].contains(selectedProviderID) {
+                        // Apple Intelligence Badge (when selected)
+                        if selectedProviderID == "apple-intelligence" {
+                            HStack(spacing: 8) {
+                                Image(systemName: "apple.logo")
+                                    .font(.system(size: 14))
+                                Text("On-Device")
+                                    .fontWeight(.medium)
+                                Text("•")
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.system(size: 12))
+                                Text("Private")
+                                    .fontWeight(.medium)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.green.opacity(0.15))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(.green.opacity(0.3), lineWidth: 1)
+                                    )
+                            )
+                            
+                            Divider()
+                        }
+                        
+                        // Base URL (for custom providers, not for Apple Intelligence)
+                        if !["openai", "groq", "apple-intelligence"].contains(selectedProviderID) {
                             HStack(spacing: 12) {
                                 HStack {
                                     Text("Base URL:")
@@ -1212,59 +1276,87 @@ struct ContentView: View {
                             }
                         }
                         
-                        Divider()
-                        
-                        // API Key Management
-                        Button(action: {
-                            newProviderApiKey = providerAPIKeys[currentProvider] ?? ""
-                            showAPIKeyEditor = true
-                        }) {
-                            Label("Add or Modify API Key", systemImage: "key.fill")
-                                .labelStyle(.titleAndIcon)
-                                .font(.caption)
-                        }
-                        .buttonStyle(GlassButtonStyle())
-                        .buttonHoverEffect()
-                        
-                        Divider()
-                        
-                        // Model Row
-                        HStack(spacing: 12) {
-                            HStack {
-                                Text("Model:")
-                                    .fontWeight(.medium)
-                            }
-                            .frame(width: 90, alignment: .leading)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(
-                                LinearGradient(
-                                    colors: [theme.palette.accent.opacity(0.15), theme.palette.accent.opacity(0.05)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .cornerRadius(6)
+                        // API Key Management (not for Apple Intelligence)
+                        if selectedProviderID != "apple-intelligence" {
+                            Divider()
                             
-                            Picker("", selection: $selectedModel) {
-                                ForEach(availableModels, id: \.self) { model in
-                                    Text(model).tag(model)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .labelsHidden()
-                            .frame(width: 200)
-                            .onChange(of: selectedModel) { newValue in
-                                let key = providerKey(for: selectedProviderID)
-                                selectedModelByProvider[key] = newValue
-                                SettingsStore.shared.selectedModelByProvider = selectedModelByProvider
-                            }
-                            
-                            // Always show delete button
                             Button(action: {
-                                let key = providerKey(for: selectedProviderID)
-                                // Allow deletion for any model except for OpenAI/Groq providers
-                                if selectedProviderID != "openai" && selectedProviderID != "groq" {
+                                newProviderApiKey = providerAPIKeys[currentProvider] ?? ""
+                                showAPIKeyEditor = true
+                            }) {
+                                Label("Add or Modify API Key", systemImage: "key.fill")
+                                    .labelStyle(.titleAndIcon)
+                                    .font(.caption)
+                            }
+                            .buttonStyle(GlassButtonStyle())
+                            .buttonHoverEffect()
+                        }
+                        
+                        Divider()
+                        
+                        // Model Row (simplified for Apple Intelligence)
+                        if selectedProviderID == "apple-intelligence" {
+                            HStack(spacing: 12) {
+                                HStack {
+                                    Text("Model:")
+                                        .fontWeight(.medium)
+                                }
+                                .frame(width: 90, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(
+                                    LinearGradient(
+                                        colors: [theme.palette.accent.opacity(0.15), theme.palette.accent.opacity(0.05)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(6)
+                                
+                                Text("System Language Model")
+                                    .foregroundStyle(.secondary)
+                                    .font(.system(.body))
+                                
+                                Spacer()
+                            }
+                        } else {
+                            // Standard Model Row for other providers
+                            HStack(spacing: 12) {
+                                HStack {
+                                    Text("Model:")
+                                        .fontWeight(.medium)
+                                }
+                                .frame(width: 90, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(
+                                    LinearGradient(
+                                        colors: [theme.palette.accent.opacity(0.15), theme.palette.accent.opacity(0.05)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(6)
+                                
+                                Picker("", selection: $selectedModel) {
+                                    ForEach(availableModels, id: \.self) { model in
+                                        Text(model).tag(model)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .frame(width: 200)
+                                .onChange(of: selectedModel) { newValue in
+                                    let key = providerKey(for: selectedProviderID)
+                                    selectedModelByProvider[key] = newValue
+                                    SettingsStore.shared.selectedModelByProvider = selectedModelByProvider
+                                }
+                                
+                                // Always show delete button
+                                Button(action: {
+                                    let key = providerKey(for: selectedProviderID)
+                                    // Allow deletion for any model except for OpenAI/Groq providers
+                                    if selectedProviderID != "openai" && selectedProviderID != "groq" {
                                     var list = availableModelsByProvider[key] ?? availableModels
                                     list.removeAll { $0 == selectedModel }
                                     
@@ -1344,11 +1436,13 @@ struct ContentView: View {
                             }
                             .padding(.leading, 122) // Align with model picker
                         }
+                        } // End of else block for non-Apple Intelligence model row
 
                         
                         Divider()
                         
-                        // Connection Test
+                        // Connection Test (not applicable for Apple Intelligence)
+                        if selectedProviderID != "apple-intelligence" {
                         HStack(spacing: 12) {
                             Button(action: {
                                 DebugLogger.shared.info("=== TEST CONNECTION BUTTON PRESSED ===", source: "ContentView")
@@ -1457,6 +1551,7 @@ struct ContentView: View {
                             }
                             .padding(.top, 6)
                         }
+                        } // End of if selectedProviderID != "apple-intelligence" for connection test section
                         
                         // Add Provider Modal
                         if showingSaveProvider {
@@ -2142,6 +2237,20 @@ struct ContentView: View {
 
     // MARK: - Modular AI Processing
     private func processTextWithAI(_ inputText: String) async -> String {
+        // Route to Apple Intelligence if selected
+        if selectedProviderID == "apple-intelligence" {
+            #if canImport(FoundationModels)
+            if #available(macOS 26.0, *) {
+                let provider = AppleIntelligenceProvider()
+                let appInfo = recordingAppInfo ?? getCurrentAppInfo()
+                let systemPrompt = buildSystemPrompt(appInfo: appInfo)
+                DebugLogger.shared.debug("Using Apple Intelligence for transcription cleanup", source: "ContentView")
+                return await provider.process(systemPrompt: systemPrompt, userText: inputText)
+            }
+            #endif
+            return inputText // Fallback if not available
+        }
+        
         let endpoint = openAIBaseURL.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty ? "https://api.openai.com/v1" : openAIBaseURL.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         
         // Build the full URL - only append /chat/completions if not already present

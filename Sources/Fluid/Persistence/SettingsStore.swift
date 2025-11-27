@@ -46,6 +46,9 @@ final class SettingsStore: ObservableObject
         
         // Rewrite Mode Keys
         static let rewriteModeHotkeyShortcut = "RewriteModeHotkeyShortcut"
+        static let rewriteModeSelectedModel = "RewriteModeSelectedModel"
+        static let rewriteModeSelectedProviderID = "RewriteModeSelectedProviderID"
+        static let rewriteModeLinkedToGlobal = "RewriteModeLinkedToGlobal"
     }
 
     struct SavedProvider: Codable, Identifiable, Hashable
@@ -397,6 +400,37 @@ final class SettingsStore: ObservableObject
             {
                 defaults.set(data, forKey: Keys.rewriteModeHotkeyShortcut)
             }
+        }
+    }
+    
+    var rewriteModeSelectedModel: String?
+    {
+        get { defaults.string(forKey: Keys.rewriteModeSelectedModel) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.rewriteModeSelectedModel)
+        }
+    }
+    
+    var rewriteModeSelectedProviderID: String
+    {
+        get { defaults.string(forKey: Keys.rewriteModeSelectedProviderID) ?? "openai" }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.rewriteModeSelectedProviderID)
+        }
+    }
+    
+    var rewriteModeLinkedToGlobal: Bool
+    {
+        get {
+            // Default to true - sync with global settings by default
+            let value = defaults.object(forKey: Keys.rewriteModeLinkedToGlobal)
+            return value as? Bool ?? true
+        }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.rewriteModeLinkedToGlobal)
         }
     }
 

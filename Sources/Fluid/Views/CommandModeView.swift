@@ -8,36 +8,8 @@ struct CommandModeView: View {
     var onClose: (() -> Void)?
     @State private var inputText: String = ""
     
-    // Local state for available models (derived)
+    // Local state for available models (derived from shared AI Settings pool)
     @State private var availableModels: [String] = []
-    
-    // Computed Bindings
-    private var selectedProviderIDBinding: Binding<String> {
-        Binding(
-            get: { settings.commandModeLinkedToGlobal ? settings.selectedProviderID : settings.commandModeSelectedProviderID },
-            set: { newValue in
-                if settings.commandModeLinkedToGlobal {
-                    settings.selectedProviderID = newValue
-                } else {
-                    settings.commandModeSelectedProviderID = newValue
-                }
-                updateAvailableModels()
-            }
-        )
-    }
-    
-    private var selectedModelBinding: Binding<String> {
-        Binding(
-            get: { (settings.commandModeLinkedToGlobal ? settings.selectedModel : settings.commandModeSelectedModel) ?? "gpt-4o" },
-            set: { newValue in
-                if settings.commandModeLinkedToGlobal {
-                    settings.selectedModel = newValue
-                } else {
-                    settings.commandModeSelectedModel = newValue
-                }
-            }
-        )
-    }
     
     // UI State
     @State private var showingClearConfirmation = false
@@ -78,9 +50,9 @@ struct CommandModeView: View {
                 inputText = newText
             }
         }
-        // React to external changes (e.g. if global settings change while linked)
-        .onChange(of: settings.selectedProviderID) { _ in if settings.commandModeLinkedToGlobal { updateAvailableModels() } }
-        .onChange(of: settings.commandModeLinkedToGlobal) { _ in updateAvailableModels() }
+        .onChange(of: settings.commandModeSelectedProviderID) { _ in 
+            updateAvailableModels() 
+        }
         .onExitCommand {
             onClose?()
         }
@@ -96,18 +68,6 @@ struct CommandModeView: View {
             
             Spacer()
             
-            // Link to AI Settings Toggle
-            Toggle(isOn: $settings.commandModeLinkedToGlobal) {
-                Label("Sync Settings", systemImage: "link")
-                    .font(.caption)
-            }
-            .toggleStyle(.checkbox)
-            .help("Use same provider and model as main AI settings")
-            
-            Divider()
-                .frame(height: 20)
-                .padding(.horizontal, 4)
-            
             // Confirm Before Execute Toggle
             Toggle(isOn: $settings.commandModeConfirmBeforeExecute) {
                 Label("Confirm", systemImage: "checkmark.shield")
@@ -120,18 +80,33 @@ struct CommandModeView: View {
                 .frame(height: 20)
                 .padding(.horizontal, 8)
             
-            // Provider Selector
-            Picker("", selection: selectedProviderIDBinding) {
+            // Provider Selector (independent for Command Mode)
+            Picker("", selection: $settings.commandModeSelectedProviderID) {
                 Text("OpenAI").tag("openai")
                 Text("Groq").tag("groq")
+                
+                // Apple Intelligence - disabled for Command Mode (no tool support)
+                Text("Apple Intelligence (No tools)")
+                    .foregroundColor(.secondary)
+                    .tag("apple-intelligence-disabled")
+                
                 ForEach(settings.savedProviders) { provider in
                     Text(provider.name).tag(provider.id)
                 }
             }
-            .frame(width: 120)
+            .frame(width: 140)
+            .onChange(of: settings.commandModeSelectedProviderID) { newValue in
+                // Prevent selecting disabled Apple Intelligence
+                if newValue == "apple-intelligence-disabled" || newValue == "apple-intelligence" {
+                    settings.commandModeSelectedProviderID = "openai"
+                }
+            }
             
             // Model Selector
-            Picker("", selection: selectedModelBinding) {
+            Picker("", selection: Binding(
+                get: { settings.commandModeSelectedModel ?? availableModels.first ?? "gpt-4o" },
+                set: { settings.commandModeSelectedModel = $0 }
+            )) {
                 ForEach(availableModels, id: \.self) { model in
                     Text(model).tag(model)
                 }
@@ -291,9 +266,10 @@ struct CommandModeView: View {
     }
     
     private func updateAvailableModels() {
-        let currentProviderID = settings.commandModeLinkedToGlobal ? settings.selectedProviderID : settings.commandModeSelectedProviderID
-        let currentModel = (settings.commandModeLinkedToGlobal ? settings.selectedModel : settings.commandModeSelectedModel) ?? "gpt-4o"
+        let currentProviderID = settings.commandModeSelectedProviderID
+        let currentModel = settings.commandModeSelectedModel ?? "gpt-4o"
         
+        // Pull models from the shared pool configured in AI Settings
         let possibleKeys = providerKeys(for: currentProviderID)
         let storedList = possibleKeys.lazy
             .compactMap { SettingsStore.shared.availableModelsByProvider[$0] }
@@ -305,13 +281,9 @@ struct CommandModeView: View {
             availableModels = defaultModels(for: currentProviderID)
         }
         
+        // If current model not in list, select first available
         if !availableModels.contains(currentModel) {
-            let newModel = availableModels.first ?? "gpt-4o"
-            if settings.commandModeLinkedToGlobal {
-                settings.selectedModel = newModel
-            } else {
-                settings.commandModeSelectedModel = newModel
-            }
+            settings.commandModeSelectedModel = availableModels.first ?? "gpt-4o"
         }
     }
     

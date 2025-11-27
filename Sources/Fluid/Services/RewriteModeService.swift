@@ -111,9 +111,23 @@ final class RewriteModeService: ObservableObject {
     
     private func callLLM(messages: [Message], isWriteMode: Bool) async throws -> String {
         let settings = SettingsStore.shared
-        // Use global settings for now, or add specific rewrite settings
-        let providerID = settings.selectedProviderID
-        let model = settings.selectedModel ?? "gpt-4o"
+        // Use Write Mode's independent provider/model settings
+        let providerID = settings.rewriteModeSelectedProviderID
+        
+        // Route to Apple Intelligence if selected
+        if providerID == "apple-intelligence" {
+            #if canImport(FoundationModels)
+            if #available(macOS 26.0, *) {
+                let provider = AppleIntelligenceProvider()
+                let messageTuples = messages.map { (role: $0.role == .user ? "user" : "assistant", content: $0.content) }
+                DebugLogger.shared.debug("Using Apple Intelligence for rewrite mode", source: "RewriteModeService")
+                return try await provider.processRewrite(messages: messageTuples, isWriteMode: isWriteMode)
+            }
+            #endif
+            throw NSError(domain: "RewriteMode", code: -1, userInfo: [NSLocalizedDescriptionKey: "Apple Intelligence not available"])
+        }
+        
+        let model = settings.rewriteModeSelectedModel ?? "gpt-4o"
         let apiKey = settings.providerAPIKeys[providerID] ?? ""
         
         let baseURL: String

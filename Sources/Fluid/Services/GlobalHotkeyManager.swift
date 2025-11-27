@@ -19,6 +19,9 @@ final class GlobalHotkeyManager: NSObject
     private var isCommandModeKeyPressed = false
     private var isRewriteKeyPressed = false
     
+    // Busy flag to prevent race conditions during stop processing
+    private var isProcessingStop = false
+    
     private var isInitialized = false
     private var initializationTask: Task<Void, Never>?
     private var healthCheckTask: Task<Void, Never>?
@@ -465,9 +468,20 @@ final class GlobalHotkeyManager: NSObject
 
     private func toggleRecording()
     {
+        // Capture state at event time to prevent race conditions
+        let shouldStop = asrService.isRunning
+        let alreadyProcessing = isProcessingStop
+        
         Task { @MainActor [weak self] in
             guard let self = self else { return }
-            if self.asrService.isRunning
+            
+            // Prevent new operations while stop is processing
+            if alreadyProcessing {
+                DebugLogger.shared.debug("Ignoring toggle - stop already in progress", source: "GlobalHotkeyManager")
+                return
+            }
+            
+            if shouldStop
             {
                 await self.stopRecordingInternal()
             }
@@ -485,9 +499,20 @@ final class GlobalHotkeyManager: NSObject
 
     private func startRecordingIfNeeded()
     {
+        // Capture state at event time
+        let alreadyRunning = asrService.isRunning
+        let alreadyProcessing = isProcessingStop
+        
         Task { @MainActor [weak self] in
             guard let self = self else { return }
-            if !self.asrService.isRunning
+            
+            // Prevent starting while stop is processing
+            if alreadyProcessing {
+                DebugLogger.shared.debug("Ignoring start - stop in progress", source: "GlobalHotkeyManager")
+                return
+            }
+            
+            if !alreadyRunning
             {
                 // Use callback if available, otherwise fallback to direct start
                 if let callback = self.startRecordingCallback {
@@ -501,8 +526,21 @@ final class GlobalHotkeyManager: NSObject
 
     private func stopRecordingIfNeeded()
     {
+        // Capture state at event time
+        let shouldStop = asrService.isRunning
+        let alreadyProcessing = isProcessingStop
+        
         Task { @MainActor [weak self] in
             guard let self = self else { return }
+            
+            // Only stop if was running and not already processing
+            if !shouldStop || alreadyProcessing {
+                if alreadyProcessing {
+                    DebugLogger.shared.debug("Ignoring stop - already processing", source: "GlobalHotkeyManager")
+                }
+                return
+            }
+            
             await self.stopRecordingInternal()
         }
     }
@@ -511,6 +549,14 @@ final class GlobalHotkeyManager: NSObject
     private func stopRecordingInternal() async
     {
         guard asrService.isRunning else { return }
+        guard !isProcessingStop else {
+            DebugLogger.shared.debug("Stop already in progress, ignoring", source: "GlobalHotkeyManager")
+            return
+        }
+        
+        isProcessingStop = true
+        defer { isProcessingStop = false }
+        
         if let callback = stopAndProcessCallback
         {
             await callback()

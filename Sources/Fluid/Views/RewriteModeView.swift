@@ -3,11 +3,15 @@ import SwiftUI
 struct RewriteModeView: View {
     @ObservedObject var service: RewriteModeService
     @ObservedObject var asr: ASRService
+    @ObservedObject var settings = SettingsStore.shared
     @EnvironmentObject var menuBarManager: MenuBarManager
     var onClose: (() -> Void)?
     
     @State private var inputText: String = ""
     @State private var showOriginal: Bool = true
+    
+    // Local state for available models (derived from shared AI Settings pool)
+    @State private var availableModels: [String] = []
     
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +25,50 @@ struct RewriteModeView: View {
                     .fontWeight(.bold)
                 
                 Spacer()
+                
+                // Provider Selector (independent for Write Mode)
+                Picker("", selection: $settings.rewriteModeSelectedProviderID) {
+                    Text("OpenAI").tag("openai")
+                    Text("Groq").tag("groq")
+                    
+                    // Apple Intelligence
+                    if AppleIntelligenceService.isAvailable {
+                        Text("Apple Intelligence").tag("apple-intelligence")
+                    } else {
+                        Text("Apple Intelligence (Unavailable)")
+                            .foregroundColor(.secondary)
+                            .tag("apple-intelligence-disabled")
+                    }
+                    
+                    ForEach(settings.savedProviders) { provider in
+                        Text(provider.name).tag(provider.id)
+                    }
+                }
+                .frame(width: 140)
+                .onChange(of: settings.rewriteModeSelectedProviderID) { newValue in
+                    // Prevent selecting disabled Apple Intelligence
+                    if newValue == "apple-intelligence-disabled" {
+                        settings.rewriteModeSelectedProviderID = "openai"
+                    }
+                    updateAvailableModels()
+                }
+                
+                // Model Selector (hidden for Apple Intelligence)
+                if settings.rewriteModeSelectedProviderID != "apple-intelligence" {
+                    Picker("", selection: Binding(
+                        get: { settings.rewriteModeSelectedModel ?? availableModels.first ?? "gpt-4o" },
+                        set: { settings.rewriteModeSelectedModel = $0 }
+                    )) {
+                        ForEach(availableModels, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                    .frame(width: 140)
+                }
+                
+                Divider()
+                    .frame(height: 20)
+                    .padding(.horizontal, 4)
                 
                 Button(action: { onClose?() }) {
                     Image(systemName: "xmark.circle.fill")
@@ -176,6 +224,7 @@ struct RewriteModeView: View {
         .onAppear {
             // Set overlay mode to rewrite when this view appears
             menuBarManager.setOverlayMode(.rewrite)
+            updateAvailableModels()
         }
         .onDisappear {
             // Reset overlay mode to dictation when leaving
@@ -197,6 +246,68 @@ struct RewriteModeView: View {
         inputText = ""
         Task {
             await service.processRewriteRequest(prompt)
+        }
+    }
+    
+    // MARK: - Model Management (pulls from shared AI Settings pool)
+    
+    private func updateAvailableModels() {
+        let currentProviderID = settings.rewriteModeSelectedProviderID
+        let currentModel = settings.rewriteModeSelectedModel ?? "gpt-4o"
+        
+        // Apple Intelligence has only one model
+        if currentProviderID == "apple-intelligence" {
+            availableModels = ["System Model"]
+            return
+        }
+        
+        // Pull models from the shared pool configured in AI Settings
+        let possibleKeys = providerKeys(for: currentProviderID)
+        let storedList = possibleKeys.lazy
+            .compactMap { SettingsStore.shared.availableModelsByProvider[$0] }
+            .first { !$0.isEmpty }
+        
+        if let stored = storedList {
+            availableModels = stored
+        } else {
+            availableModels = defaultModels(for: currentProviderID)
+        }
+        
+        // If current model not in list, select first available
+        if !availableModels.contains(currentModel) {
+            settings.rewriteModeSelectedModel = availableModels.first ?? "gpt-4o"
+        }
+    }
+    
+    private func providerKeys(for providerID: String) -> [String] {
+        var keys: [String] = []
+        let trimmed = providerID.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if trimmed.isEmpty {
+            return [providerID]
+        }
+        
+        if trimmed == "openai" || trimmed == "groq" {
+            return [trimmed]
+        }
+        
+        if trimmed.hasPrefix("custom:") {
+            keys.append(trimmed)
+            keys.append(String(trimmed.dropFirst("custom:".count)))
+        } else {
+            keys.append("custom:\(trimmed)")
+            keys.append(trimmed)
+        }
+        
+        return Array(Set(keys))
+    }
+    
+    private func defaultModels(for provider: String) -> [String] {
+        switch provider {
+        case "openai": return ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
+        case "groq": return ["llama-3.3-70b-versatile", "llama3-70b-8192", "mixtral-8x7b-32768"]
+        case "apple-intelligence": return ["System Model"]
+        default: return ["gpt-4o"]
         }
     }
 }

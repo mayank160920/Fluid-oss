@@ -9,7 +9,13 @@ Fully open source voice-to-text dictation app for macOS with AI enhancement.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=altic-dev/Fluid-oss&type=Date)](https://star-history.com/#altic-dev/Fluid-oss&Date)
+<a href="https://star-history.com/#altic-dev/Fluid-oss&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=altic-dev/Fluid-oss&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=altic-dev/Fluid-oss&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=altic-dev/Fluid-oss&type=Date" />
+  </picture>
+</a>
 
 ## Demo
 
